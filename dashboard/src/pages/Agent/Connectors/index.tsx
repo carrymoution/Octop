@@ -44,6 +44,7 @@ import {
   type FeishuUserAuthStartResult,
 } from "../../../api/modules/connectors";
 import { ConnectorCard } from "./ConnectorCard";
+import { ChartForgeConnector } from "./ChartForgeConnector";
 import { AgentlyAuth } from "./AgentlyAuth";
 import { ConnectorInstanceCard } from "./ConnectorInstanceCard";
 import { CustomMcpTab } from "./CustomMcpTab";
@@ -2265,6 +2266,10 @@ export default function ConnectorsPage() {
   const { t } = useTranslation();
   const [searchParams, setSearchParams] = useSearchParams();
   const [activeTab, setActiveTab] = useState<ConnectorTab>("enabled");
+  const [chartforgeStatus, setChartforgeStatus] = useState({
+    enabled: false,
+    connected: false,
+  });
   const [drawerEntry, setDrawerEntry] = useState<ConnectorCatalogEntry | null>(
     null,
   );
@@ -2355,6 +2360,9 @@ export default function ConnectorsPage() {
         />
       }
     >
+      {activeTab !== "custom" && (
+        <ChartForgeConnector onAvailabilityChange={setChartforgeStatus} />
+      )}
       {activeTab === "custom" ? (
         <CustomMcpTab focusServerName={customFocusServerName} />
       ) : activeTab === "enabled" ? (
@@ -2362,7 +2370,7 @@ export default function ConnectorsPage() {
           <div className={styles.loadingState}>
             <Spin />
           </div>
-        ) : instances.length === 0 ? (
+        ) : instances.length === 0 && !chartforgeStatus.enabled ? (
           <div className={styles.emptyLayout}>
             <StreamSetupGuide
               className={styles.emptyGuide}
@@ -2406,7 +2414,8 @@ export default function ConnectorsPage() {
             <div className={styles.listToolbar}>
               <span className={styles.listToolbarMeta}>
                 {t("connectors.enabledSummary", {
-                  count: instances.length,
+                  count:
+                    instances.length + (chartforgeStatus.connected ? 1 : 0),
                   defaultValue: "已启用 {{count}} 个连接器实例",
                 })}
               </span>
@@ -2466,13 +2475,15 @@ export default function ConnectorsPage() {
             </div>
           ) : (
             <div className={styles.typeGrid}>
-              {catalog.map((entry) => (
-                <ConnectorCard
-                  key={entry.kind}
-                  entry={entry}
-                  onConfigure={handleConfigure}
-                />
-              ))}
+              {catalog
+                .filter((entry) => entry.kind !== "chartforge")
+                .map((entry) => (
+                  <ConnectorCard
+                    key={entry.kind}
+                    entry={entry}
+                    onConfigure={handleConfigure}
+                  />
+                ))}
             </div>
           )}
         </>

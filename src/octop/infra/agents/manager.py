@@ -2476,6 +2476,29 @@ class AgentManager:
             agent_id=agent_id,
             mcp_server_configs=agent.config.mcp_server_configs,
         )
+        self._attach_chartforge_tools(agent, agent.config.mcp_server_configs)
+
+    def _attach_chartforge_tools(self, agent: Any, configs: dict[str, Any]) -> None:
+        if "chartforge" not in configs:
+            return
+        if any(
+            str(getattr(tool, "name", "")).startswith("chartforge_")
+            for tool in getattr(agent, "_mcp_tools", [])
+        ):
+            return
+        from types import SimpleNamespace
+
+        from octop.infra.connectors.chartforge import build_tools
+
+        def services() -> Any:
+            return SimpleNamespace(
+                repos=self._repos,
+                secret_repo=self._repos.secret_repo,
+                settings_repo=self._repos.settings_repo,
+                user_repo=self._repos.user_repo,
+            )
+
+        agent.inject_mcp_tools(build_tools(services))
 
     # ------------------------------------------------------------------
     # Settings persistence — push global policy into harness runtime
@@ -3262,6 +3285,7 @@ class AgentManager:
                 agent_id=row.agent_id,
                 mcp_server_configs=cfg.mcp_server_configs,
             )
+            self._attach_chartforge_tools(agent, cfg.mcp_server_configs)
         if not team_host:
             _sanitize_bound_mcp_tools(agent)
         if team_host:

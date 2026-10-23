@@ -993,5 +993,33 @@
     "error_exited": "laya-serve exited before it was ready.",
     "error_not_installed": "Laya is not installed yet.",
     "error_stalled": "The install produced no result for too long and was stopped."
+  },
+  "chartforge": {
+    "invalidOrigin": "Enter the platform backend origin with http:// or https:// and its port. Do not use a frontend page or /mcp/sql path.",
+    "httpNotAllowed": "This address uses HTTP. Explicitly enable private HTTP in organization settings.",
+    "unsafeAddress": "This network address is not allowed. HTTP supports private or loopback addresses, excluding link-local addresses.",
+    "connectionFailed": "Cannot reach the platform backend. Check that it is running and the host and port are correct.",
+    "redirectNotAllowed": "The platform redirected the request. Enter the backend origin that directly serves OAuth endpoints.",
+    "invalidServer": "This address did not return platform OAuth metadata. It may be the frontend address. Use the backend origin, usually http://localhost:8080 locally.",
+    "issuerMismatch": "The address differs from the platform OAuth issuer. Use its gateway.base-url value exactly, including localhost versus 127.0.0.1.",
+    "endpointMismatch": "The platform OAuth endpoints do not match the configured origin. Check gateway and reverse proxy settings.",
+    "callbackNotAllowed": "The platform has not allowed the Octop callback: {url}. Add it to SQL_GATEWAY_OCTOP_CALLBACKS and restart the platform.",
+    "registrationFailed": "The platform rejected OAuth registration. Check gateway availability and the callback allowlist.",
+    "disabled": "AI Report Query has not been enabled by an administrator.",
+    "reauthorize": "Please reconnect your employee account for AI Report Query.",
+    "identityMismatch": "The ChartForge employee number must match your Octop username.",
+    "queryFailed": "AI Report Query failed.",
+    "connected": "AI Report Query authorization completed. You may close this window.",
+    "authorizationFailed": "Authorization failed. Confirm that the employee numbers match and reconnect from Octop.",
+    "useAuthorize": "Use the personal AI Report Query authorization entry. Credentials cannot be shared or entered manually.",
+    "tools": {
+      "list_connections": "List authorized database connections",
+      "list_schemas": "List authorized databases and schemas",
+      "list_objects": "List authorized tables and views",
+      "describe_object": "Describe readable fields of an authorized object",
+      "query_sql": "Execute a read-only SELECT within the current employee permissions",
+      "list_saved_queries": "List authorized parameterized queries",
+      "run_saved_query": "Run an authorized parameterized query"
+    }
   }
 }

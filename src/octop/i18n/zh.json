@@ -993,5 +993,33 @@
     "error_exited": "laya-serve 在就绪前退出了。",
     "error_not_installed": "尚未安装 Laya。",
     "error_stalled": "安装长时间没有结果，已停止。"
+  },
+  "chartforge": {
+    "invalidOrigin": "请输入平台后端根地址，包含 http:// 或 https:// 和端口，不要填写前端页面或 /mcp/sql 路径。",
+    "httpNotAllowed": "当前地址使用 HTTP，请在组织配置中明确开启“允许内网 HTTP”。",
+    "unsafeAddress": "该地址不在允许的网络范围内。HTTP 仅支持内网或本机地址，不支持公网和链路本地地址。",
+    "connectionFailed": "无法连接平台后端，请检查服务是否启动、地址和端口是否正确。",
+    "redirectNotAllowed": "平台接口返回了跳转，请填写可直接访问 OAuth 接口的后端根地址。",
+    "invalidServer": "该地址没有返回平台 OAuth 配置，可能填成了前端地址。请填写后端地址，本地通常为 http://localhost:8080。",
+    "issuerMismatch": "地址与平台声明的 OAuth 地址不一致，请使用平台 gateway.base-url 配置的地址，localhost 与 127.0.0.1 也需要保持一致。",
+    "endpointMismatch": "平台 OAuth 端点与配置地址不一致，请检查平台网关地址和反向代理配置。",
+    "callbackNotAllowed": "平台尚未允许 Octop 回调地址：{url}。请将它加入平台 SQL_GATEWAY_OCTOP_CALLBACKS 后重启平台。",
+    "registrationFailed": "平台拒绝创建 OAuth 连接，请检查网关是否启用及回调地址配置。",
+    "disabled": "管理员尚未启用AI报表查询连接器。",
+    "reauthorize": "请重新连接并授权AI报表查询员工账号。",
+    "identityMismatch": "ChartForge员工工号必须与当前Octop用户名一致。",
+    "queryFailed": "AI报表查询失败。",
+    "connected": "AI报表查询授权完成，可以关闭此窗口。",
+    "authorizationFailed": "授权失败，请确认两边工号一致，并从Octop重新连接。",
+    "useAuthorize": "请通过AI报表查询个人授权入口连接，不支持共享或手动填写凭据。",
+    "tools": {
+      "list_connections": "列出已授权数据库连接",
+      "list_schemas": "列出已授权数据库和Schema",
+      "list_objects": "列出已授权表和视图",
+      "describe_object": "查看授权对象的可读字段",
+      "query_sql": "按当前员工权限执行只读SELECT",
+      "list_saved_queries": "列出已授权参数化查询",
+      "run_saved_query": "执行已授权参数化查询"
+    }
   }
 }

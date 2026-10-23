@@ -2,6 +2,18 @@
   "version": 1,
   "connectors": [
     {
+      "kind": "chartforge",
+      "name": { "en": "AI Report Query", "zh": "AI报表查询" },
+      "description": { "en": "Query governed databases with your employee account", "zh": "使用员工工号授权，按库、表、字段和数据范围查询数据库" },
+      "auth_kind": "oauth2",
+      "doc_url": "https://github.com/carrymoution/Octop/blob/main/docs/chartforge.md",
+      "icon": "database",
+      "color": "#2563eb",
+      "phase": "available",
+      "mcp_mode": "gateway",
+      "category": "self_hosted"
+    },
+    {
       "kind": "tencent-docs",
       "name": { "en": "Tencent Docs", "zh": "腾讯文档" },
       "description": {
