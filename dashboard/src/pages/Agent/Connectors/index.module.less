@@ -4,6 +4,55 @@
   padding: 48px 0;
 }
 
+.chartforgeCard {
+  margin-bottom: 20px;
+  border-radius: var(--fn-radius-lg);
+  .chartforgeHeader {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 10px;
+    svg {
+      color: var(--fn-color-brand);
+    }
+  }
+  .chartforgeDescription {
+    margin-bottom: 12px;
+  }
+  .chartforgeDetails {
+    display: flex;
+    flex-wrap: wrap;
+    column-gap: 24px;
+    row-gap: 4px;
+    font-size: 12px;
+    color: var(--fn-text-secondary);
+    code {
+      overflow-wrap: anywhere;
+    }
+  }
+  .chartforgeHint {
+    margin: 10px 0 14px;
+  }
+}
+.chartforgeError {
+  margin: 12px 0;
+  overflow-wrap: anywhere;
+}
+.chartforgeCallback {
+  padding: 12px;
+  margin-bottom: 16px;
+  border-radius: var(--fn-radius-lg);
+  background: var(--fn-surface-sunken);
+  p {
+    margin: 6px 0;
+  }
+  code {
+    overflow-wrap: anywhere;
+  }
+}
+
 .emptyState {
   display: flex;
   flex-direction: column;

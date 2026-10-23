@@ -34,6 +34,7 @@ are updating `catalog.json` in the same change.
 
 | Kind | Name | 名称 | Category | Auth | MCP mode |
 |------|------|------|----------|------|----------|
+| `chartforge` | AI Report Query | AI报表查询 | self_hosted | oauth2 | gateway |
 | `tencent-docs` | Tencent Docs | 腾讯文档 | office | personal_token | remote |
 | `tencent-ima` | Tencent IMA | 腾讯 IMA | knowledge | api_key | gateway |
 | `tencent-meeting` | Tencent Meeting | 腾讯会议 | office | personal_token | remote |

@@ -21,7 +21,10 @@ export function useConnectorInstances() {
         connectorsApi.catalog(),
         connectorsApi.listInstances(),
       ]);
-      return { catalog: cat ?? [], instances: inst ?? [] };
+      return {
+        catalog: cat ?? [],
+        instances: (inst ?? []).filter((item) => item.kind !== "chartforge"),
+      };
     },
     [],
     { errorFallback: t("connectors.loadFailed"), t, logLabel: "Connectors" },

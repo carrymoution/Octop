@@ -718,6 +718,10 @@ async def create_instance(
     server: Any = Depends(get_server),
 ) -> dict[str, Any]:
     """Connect a third-party account as a new named instance."""
+    if body.kind == "chartforge":
+        from octop.infra.connectors.chartforge import failure
+
+        raise failure("useAuthorize")
     if is_custom_mcp_kind(body.kind):
         raise OctopError(
             ErrorCode.CONNECTOR_KIND_UNSUPPORTED,
@@ -840,6 +844,10 @@ async def patch_instance(
     if inst is None:
         raise OctopError(ErrorCode.CONNECTOR_NOT_FOUND, f"instance {instance_id!r} not found")
     _assert_can_manage_connector(inst, user)
+    if inst.kind == "chartforge" and (body.shared or body.credentials is not None):
+        from octop.infra.connectors.chartforge import failure
+
+        raise failure("useAuthorize")
     if is_custom_mcp_kind(inst.kind):
         raise OctopError(
             ErrorCode.CONNECTOR_KIND_UNSUPPORTED,
@@ -1470,6 +1478,11 @@ async def oauth_callback(
             "callback_invalid_state",
             status_code=400,
         )
+
+    if row.kind == "chartforge":
+        from octop.api.routers.chartforge import complete_callback
+
+        return await complete_callback(request, server, row, code)
 
     base = resolve_public_base(request)
     redirect_uri = f"{base}/api/connectors/oauth/callback"

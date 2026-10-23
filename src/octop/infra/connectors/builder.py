@@ -57,6 +57,8 @@ def normalize_weknora_base_url(raw: str) -> str:
 
 
 def mcp_server_name(kind: str, instance_id: str) -> str:
+    if kind == "chartforge":
+        return "chartforge"
     return f"{kind}__{instance_id}"
 
 
@@ -100,6 +102,8 @@ def build_http_mcp_spec(
     creds: dict[str, Any],
     config: OctopConfig,
 ) -> dict[str, Any]:
+    if entry.kind == "chartforge":
+        return {}  # The per-invocation adapter resolves the current employee's grant.
     if entry.mcp_mode == "remote":
         return _build_remote_spec(entry, creds)
     if entry.mcp_mode == "stdio":
@@ -558,6 +562,8 @@ def _iter_active_connectors(
     user_id: int,
 ) -> Any:
     for inst in connector_repo.list_visible(user_id):
+        if inst.kind == "chartforge" and (inst.user_id != user_id or inst.shared):
+            continue
         if inst.status != "active":
             continue
         entry = get_catalog_entry(inst.kind)
