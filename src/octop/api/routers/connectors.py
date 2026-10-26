@@ -21,6 +21,7 @@ from octop.infra.auth.sso.redirect_after import sanitize_redirect_after
 from octop.infra.connectors.builder import (
     mcp_server_name,
     normalize_weiyun_mcp_token,
+    runtime_mcp_server_name,
     validate_create_credentials,
 )
 from octop.infra.connectors.catalog import (
@@ -292,7 +293,7 @@ def _instance_to_dict(inst: Any) -> dict[str, Any]:
         "display_name": inst.display_name,
         "description": config.get("description"),
         "status": inst.status,
-        "mcp_server_name": inst.mcp_server_name,
+        "mcp_server_name": runtime_mcp_server_name(inst),
         "has_credentials": inst.has_credentials,
         "default_open": read_default_open(config),
         "shared": bool(inst.shared),

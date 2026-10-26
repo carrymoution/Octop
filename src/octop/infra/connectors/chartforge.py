@@ -17,6 +17,7 @@ from weakref import WeakKeyDictionary
 import httpx
 
 from octop.i18n import tr
+from octop.infra.connectors.builder import mcp_server_name
 from octop.infra.connectors.crypto import decrypt_credentials, encrypt_credentials
 from octop.infra.connectors.oauth.pkce import new_pkce_pair
 from octop.infra.errors import ErrorCode, OctopError
@@ -314,36 +315,36 @@ class ChartForgeConnector:
         }
         try:
             await self._check_identity(config, creds, row.user_id)
+            async with self._lock(row.user_id):
+                existing = self.repo.get_by_user_kind(row.user_id, "chartforge")
+                instance_id = existing.instance_id if existing else new_ulid()
+                previous = (
+                    decrypt_credentials(self.services.secret_repo, existing.credential_blob)
+                    if existing and existing.has_credentials
+                    else {}
+                )
+                if existing:
+                    self.repo.update_status(instance_id, "active")
+                    self.repo.update_metadata(instance_id, display_name="AI报表查询", shared=False)
+                else:
+                    self.repo.create(
+                        instance_id=instance_id,
+                        user_id=row.user_id,
+                        kind="chartforge",
+                        display_name="AI报表查询",
+                        mcp_server_name=mcp_server_name("chartforge", instance_id),
+                        shared=False,
+                        config_json=json.dumps({"default_open": True}),
+                    )
+                self.repo.upsert_credentials(
+                    instance_id=instance_id,
+                    blob=encrypt_credentials(self.services.secret_repo, creds),
+                    expires_at=creds["expires_at"],
+                )
+                await self._revoke(config, previous)
         except Exception:
             await self._revoke(config, creds)
             raise
-        async with self._lock(row.user_id):
-            existing = self.repo.get_by_user_kind(row.user_id, "chartforge")
-            instance_id = existing.instance_id if existing else new_ulid()
-            previous = (
-                decrypt_credentials(self.services.secret_repo, existing.credential_blob)
-                if existing and existing.has_credentials
-                else {}
-            )
-            if existing:
-                self.repo.update_status(instance_id, "active")
-                self.repo.update_metadata(instance_id, display_name="AI报表查询", shared=False)
-            else:
-                self.repo.create(
-                    instance_id=instance_id,
-                    user_id=row.user_id,
-                    kind="chartforge",
-                    display_name="AI报表查询",
-                    mcp_server_name="chartforge",
-                    shared=False,
-                    config_json=json.dumps({"default_open": True}),
-                )
-            self.repo.upsert_credentials(
-                instance_id=instance_id,
-                blob=encrypt_credentials(self.services.secret_repo, creds),
-                expires_at=creds["expires_at"],
-            )
-            await self._revoke(config, previous)
 
     async def _check_identity(
         self, config: dict[str, Any], creds: dict[str, Any], user_id: int
