@@ -106,8 +106,6 @@ async def request(config: dict[str, Any], method: str, path: str, **kwargs: Any)
             or (ip.is_reserved and not ip.is_loopback)
         ):
             raise failure("unsafeAddress")
-        if parsed.scheme == "http" and not (ip.is_private or ip.is_loopback):
-            raise failure("unsafeAddress")
     # Prefer IPv4 when localhost resolves to both families but the server binds only IPv4.
     pinned = next((address for address in addresses if address[0] == socket.AF_INET), addresses[0])
     try:

@@ -460,13 +460,13 @@ async def test_changed_origin_does_not_receive_old_token(
 
 
 @pytest.mark.asyncio
-async def test_http_public_and_metadata_service_addresses_are_blocked(
+async def test_metadata_and_reserved_addresses_are_blocked(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     import asyncio
     import socket
 
-    for address in ("8.8.8.8", "169.254.169.254", "0.0.0.0"):
+    for address in ("169.254.169.254", "0.0.0.0", "224.0.0.1", "240.0.0.1"):
         monkeypatch.setattr(
             asyncio.get_running_loop(),
             "getaddrinfo",
@@ -476,6 +476,74 @@ async def test_http_public_and_metadata_service_addresses_are_blocked(
             await cf.request(
                 {"base_url": "http://configured.internal", "allow_http": True}, "GET", "/gateway/me"
             )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("scheme", ["http", "https"])
+async def test_public_platform_domain_uses_pinned_origin_for_all_connector_endpoints(
+    monkeypatch: pytest.MonkeyPatch, scheme: str
+) -> None:
+    import asyncio
+    import socket
+
+    monkeypatch.setattr(
+        asyncio.get_running_loop(),
+        "getaddrinfo",
+        AsyncMock(return_value=[(socket.AF_INET, 1, 6, "", ("183.239.187.105", 5000))]),
+    )
+    seen: list[httpx.Request] = []
+    pinned: list[tuple[str, str]] = []
+
+    def transport(host: str, address: str) -> httpx.MockTransport:
+        pinned.append((host, address))
+
+        def handle(req: httpx.Request) -> httpx.Response:
+            seen.append(req)
+            return httpx.Response(200, json={})
+
+        return httpx.MockTransport(handle)
+
+    monkeypatch.setattr(cf, "PinnedIPTransport", transport)
+    origin = f"{scheme}://ai.dgkaijin.com:5000"
+    config = {"base_url": origin, "allow_http": scheme == "http"}
+    for method, path in (
+        ("GET", "/.well-known/oauth-authorization-server"),
+        ("POST", "/gateway/oauth/register"),
+        ("POST", "/oauth2/token"),
+        ("GET", "/gateway/me"),
+        ("POST", "/mcp/sql"),
+        ("POST", "/oauth2/revoke"),
+    ):
+        await cf.request(config, method, path)
+        assert str(seen[-1].url) == origin + path
+        assert seen[-1].headers["Host"] == "ai.dgkaijin.com:5000"
+    assert pinned == [("ai.dgkaijin.com", "183.239.187.105")] * 6
+
+
+@pytest.mark.asyncio
+async def test_public_http_still_requires_admin_opt_in_and_cannot_redirect(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import asyncio
+    import socket
+
+    resolver = AsyncMock(return_value=[(socket.AF_INET, 1, 6, "", ("183.239.187.105", 5000))])
+    monkeypatch.setattr(asyncio.get_running_loop(), "getaddrinfo", resolver)
+    config = {"base_url": "http://ai.dgkaijin.com:5000", "allow_http": False}
+    with pytest.raises(OctopError) as denied:
+        await cf.request(config, "GET", "/gateway/me")
+    assert denied.value.details["reason_key"] == "chartforge.httpNotAllowed"
+    resolver.assert_not_awaited()
+    monkeypatch.setattr(
+        cf,
+        "PinnedIPTransport",
+        lambda *_: httpx.MockTransport(
+            lambda req: httpx.Response(302, headers={"Location": "http://other.example"})
+        ),
+    )
+    with pytest.raises(OctopError) as redirected:
+        await cf.request({**config, "allow_http": True}, "GET", "/gateway/me")
+    assert redirected.value.details["reason_key"] == "chartforge.redirectNotAllowed"
 
 
 @pytest.mark.asyncio

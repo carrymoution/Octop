@@ -146,7 +146,7 @@ describe("ChartForgeConnector", () => {
     ).toBeEnabled();
   });
 
-  it("validates a backend origin before saving and leaves field errors in the form", async () => {
+  it("validates a platform origin before saving and leaves field errors in the form", async () => {
     vi.mocked(chartforgeApi.status).mockResolvedValue({
       base_url: "http://internal",
       enabled: true,
@@ -159,8 +159,8 @@ describe("ChartForgeConnector", () => {
       screen.getByRole("button", { name: "chartforge.settings" }),
     );
     fireEvent.change(
-      await screen.findByPlaceholderText("http://localhost:8080"),
-      { target: { value: "http://localhost:8080/sql-gateway" } },
+      await screen.findByPlaceholderText("http://ai.dgkaijin.com:5000"),
+      { target: { value: "http://ai.dgkaijin.com:5000/sql-gateway" } },
     );
     fireEvent.click(
       screen.getByRole("button", { name: "chartforge.saveAndCheck" }),
@@ -171,13 +171,13 @@ describe("ChartForgeConnector", () => {
 
   it("can check the platform before saving organization settings", async () => {
     vi.mocked(chartforgeApi.status).mockResolvedValue({
-      base_url: "http://internal",
+      base_url: "http://ai.dgkaijin.com:5000",
       enabled: true,
       allow_http: true,
       connected: false,
     });
     vi.mocked(chartforgeApi.check).mockResolvedValue({
-      base_url: "http://internal",
+      base_url: "http://ai.dgkaijin.com:5000",
     });
     render(<ChartForgeConnector />);
     await screen.findByText("chartforge.ready");
@@ -189,6 +189,12 @@ describe("ChartForgeConnector", () => {
     );
     await screen.findByText("chartforge.checkPassed");
     expect(chartforgeApi.check).toHaveBeenCalledTimes(1);
+    expect(chartforgeApi.check).toHaveBeenCalledWith(
+      expect.objectContaining({
+        base_url: "http://ai.dgkaijin.com:5000",
+        allow_http: true,
+      }),
+    );
     expect(chartforgeApi.save).not.toHaveBeenCalled();
   });
 });
