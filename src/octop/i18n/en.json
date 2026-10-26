@@ -1010,7 +1010,7 @@
     "identityMismatch": "The ChartForge employee number must match your Octop username.",
     "queryFailed": "AI Report Query failed.",
     "connected": "AI Report Query authorization completed. You may close this window.",
-    "authorizationFailed": "Authorization failed. Confirm that the employee numbers match and reconnect from Octop.",
+    "authorizationFailed": "Authorization could not be completed. Reconnect from Octop. If the problem continues, ask an administrator to check the server logs.",
     "useAuthorize": "Use the personal AI Report Query authorization entry. Credentials cannot be shared or entered manually.",
     "tools": {
       "list_connections": "List authorized database connections",

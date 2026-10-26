@@ -57,9 +57,16 @@ def normalize_weknora_base_url(raw: str) -> str:
 
 
 def mcp_server_name(kind: str, instance_id: str) -> str:
-    if kind == "chartforge":
-        return "chartforge"
     return f"{kind}__{instance_id}"
+
+
+def runtime_mcp_server_name(instance: Any) -> str:
+    """Keep ChartForge's public tool namespace stable across personal grants.
+
+    Persisted names remain globally unique; the adapter resolves the current
+    employee at invocation time, including for legacy rows named ``chartforge``.
+    """
+    return "chartforge" if instance.kind == "chartforge" else str(instance.mcp_server_name)
 
 
 def _internal_mcp_uses_https(config: OctopConfig) -> bool:
@@ -605,15 +612,15 @@ def build_mcp_server_configs_for_user(
             if is_inprocess_gateway(entry):
                 # Name-only placeholder: harness skips specs without ``transport``;
                 # tools are injected in-process in AgentManager._post_start_agent.
-                configs[inst.mcp_server_name] = {}
+                configs[runtime_mcp_server_name(inst)] = {}
                 if log:
                     logger.info(
                         "  register %s (%s) mcp_mode=gateway (in-process, no HTTP preload)",
-                        inst.mcp_server_name,
+                        runtime_mcp_server_name(inst),
                         inst.kind,
                     )
                 continue
-            configs[inst.mcp_server_name] = build_http_mcp_spec(
+            configs[runtime_mcp_server_name(inst)] = build_http_mcp_spec(
                 entry=entry,
                 instance_id=inst.instance_id,
                 creds=creds,
@@ -622,10 +629,10 @@ def build_mcp_server_configs_for_user(
             if log:
                 logger.info(
                     "  include %s (%s) mcp_mode=%s transport=%s",
-                    inst.mcp_server_name,
+                    runtime_mcp_server_name(inst),
                     inst.kind,
                     entry.mcp_mode,
-                    configs[inst.mcp_server_name].get("transport"),
+                    configs[runtime_mcp_server_name(inst)].get("transport"),
                 )
         except Exception:
             logger.exception("failed to build MCP spec for instance %s", inst.instance_id)
@@ -664,7 +671,7 @@ def gateway_mcp_server_names(*, connector_repo: Any, user_id: int) -> set[str]:
             continue
         entry = get_catalog_entry(inst.kind)
         if entry is not None and is_inprocess_gateway(entry):
-            names.add(inst.mcp_server_name)
+            names.add(runtime_mcp_server_name(inst))
     return names
 
 
@@ -697,21 +704,21 @@ def inject_missing_gateway_tools(
     for inst, entry, creds in _iter_active_connectors(svc, connector_repo, user_id):
         if not is_inprocess_gateway(entry):
             continue
-        if inst.mcp_server_name not in wanted:
+        if runtime_mcp_server_name(inst) not in wanted:
             continue
-        if any(str(t).startswith(f"{inst.mcp_server_name}_") for t in tool_set):
+        if any(str(t).startswith(f"{runtime_mcp_server_name(inst)}_") for t in tool_set):
             continue
         extra.extend(
             build_gateway_langchain_tools(
                 entry=entry,
                 instance_id=inst.instance_id,
-                mcp_server_name=inst.mcp_server_name,
+                mcp_server_name=runtime_mcp_server_name(inst),
                 creds=creds,
             )
         )
     if not extra:
         gateway_names = [
-            inst.mcp_server_name
+            runtime_mcp_server_name(inst)
             for inst in connector_repo.list_visible(user_id)
             if inst.status == "active"
             and (entry := get_catalog_entry(inst.kind)) is not None

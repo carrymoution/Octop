@@ -1010,7 +1010,7 @@
     "identityMismatch": "ChartForge员工工号必须与当前Octop用户名一致。",
     "queryFailed": "AI报表查询失败。",
     "connected": "AI报表查询授权完成，可以关闭此窗口。",
-    "authorizationFailed": "授权失败，请确认两边工号一致，并从Octop重新连接。",
+    "authorizationFailed": "授权未能完成，请从Octop重新连接。如仍失败，请联系管理员检查服务端日志。",
     "useAuthorize": "请通过AI报表查询个人授权入口连接，不支持共享或手动填写凭据。",
     "tools": {
       "list_connections": "列出已授权数据库连接",

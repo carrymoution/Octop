@@ -73,6 +73,7 @@ from octop.infra.connectors.builder import (
     build_mcp_server_configs_for_user,
     gateway_mcp_server_names,
     inject_missing_gateway_tools,
+    runtime_mcp_server_name,
 )
 from octop.infra.connectors.service import ConnectorService
 from octop.infra.db.repos.audit import ACTOR_SYSTEM
@@ -2449,7 +2450,7 @@ class AgentManager:
         """
         repo = self._repos.connector_repo
         for inst in repo.list_visible(user_id):
-            if inst.status != "active" or inst.mcp_server_name not in server_names:
+            if inst.status != "active" or runtime_mcp_server_name(inst) not in server_names:
                 continue
             try:
                 await self._connector_svc.ensure_fresh_credentials(inst.instance_id, inst.kind)

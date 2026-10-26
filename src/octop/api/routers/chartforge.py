@@ -14,6 +14,8 @@ from octop.api.common.public_base import resolve_public_base
 from octop.api.deps import current_user, get_server, require_admin
 from octop.i18n import tr
 from octop.infra.connectors.chartforge import ChartForgeConnector
+from octop.infra.errors import OctopError
+from octop.infra.utils.locale import resolve_request_locale
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -90,24 +92,37 @@ async def disconnect(
 
 
 async def complete_callback(request: Request, server: Any, row: Any, code: str) -> HTMLResponse:
+    locale = resolve_request_locale(request)
     try:
         await ChartForgeConnector(server.services).complete(row, code)
         if server.app_runtime is not None:
             from octop.api.routers.connectors import _schedule_connector_reload
 
             _schedule_connector_reload(server, row.user_id)
-        text = escape(tr("chartforge.connected"))
+        text = escape(tr("chartforge.connected", locale))
         # This flow stores credentials server-side, never in a pending browser payload.
         return HTMLResponse(
             "<!doctype html><meta charset='utf-8'><p>" + text + "</p><script>"
             "if(window.opener){window.opener.postMessage({type:'octop:chartforge-oauth'},window.location.origin);window.close();}"
             "else{window.location.replace('/connectors');}</script>"
         )
-    except Exception:
+    except Exception as error:
         logger.warning("ChartForge authorization failed for user %s", row.user_id, exc_info=True)
+        reason_key = error.details.get("reason_key") if isinstance(error, OctopError) else None
+        known_reasons = {
+            "chartforge.disabled",
+            "chartforge.reauthorize",
+            "chartforge.identityMismatch",
+            "chartforge.connectionFailed",
+            "chartforge.invalidOrigin",
+            "chartforge.httpNotAllowed",
+            "chartforge.unsafeAddress",
+            "chartforge.redirectNotAllowed",
+        }
+        message_key = (
+            reason_key if reason_key in known_reasons else "chartforge.authorizationFailed"
+        )
         return HTMLResponse(
-            "<!doctype html><meta charset='utf-8'><p>"
-            + escape(tr("chartforge.authorizationFailed"))
-            + "</p>",
-            status_code=400,
+            "<!doctype html><meta charset='utf-8'><p>" + escape(tr(message_key, locale)) + "</p>",
+            status_code=400 if reason_key in known_reasons else 500,
         )

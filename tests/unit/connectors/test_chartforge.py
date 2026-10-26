@@ -5,12 +5,14 @@ import json
 import time
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import AsyncMock
+from typing import Any
+from unittest.mock import AsyncMock, Mock
 from urllib.parse import parse_qs, urlsplit
 
 import httpx
 import pytest
 from cryptography.fernet import Fernet
+from octop_harness.mcp import filter_tools_for_mcp_servers, mcp_tool_names
 
 from octop.infra.connectors import chartforge as cf
 from octop.infra.connectors.crypto import decrypt_credentials, encrypt_credentials
@@ -631,3 +633,267 @@ async def test_platform_error_envelope_is_not_reported_as_wrong_employee(
     with pytest.raises(OctopError) as caught:
         await connector._check_identity(connector.settings(), {"access_token": "test"}, 7)
     assert caught.value.details["reason_key"] == "chartforge.connectionFailed"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("legacy_first_employee", [False, True])
+async def test_multiple_employee_grants_preserve_namespace_and_isolate_credentials(
+    connector: cf.ChartForgeConnector,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    legacy_first_employee: bool,
+) -> None:
+    import asyncio
+
+    from octop.config import OctopConfig
+    from octop.infra.agents.manager import AgentManager
+    from octop.infra.connectors.builder import (
+        build_mcp_server_configs_for_user,
+        gateway_mcp_server_names,
+    )
+    from octop.infra.connectors.service import ConnectorService
+    from octop.infra.db.migrate import run_migrations
+    from octop.infra.db.pool import SqlitePool
+    from octop.infra.db.repos.connectors import ConnectorRepo
+
+    pool = SqlitePool(tmp_path / "employees.db")
+    try:
+        run_migrations(pool)
+        with pool.transaction() as db:
+            for uid in (7, 8, 9):
+                db.execute(
+                    "INSERT INTO users(id,username,password_hash,role,created_at) VALUES(?,?,'test','user',1)",
+                    (uid, f"{uid:04}"),
+                )
+        repo = ConnectorRepo(pool)
+        if legacy_first_employee:
+            repo.create(
+                instance_id="legacy",
+                user_id=7,
+                kind="chartforge",
+                display_name="AI报表查询",
+                mcp_server_name="chartforge",
+                config_json=json.dumps({"default_open": True}),
+            )
+            repo.upsert_credentials(
+                instance_id="legacy", blob=connector.repo.rows[7].credential_blob
+            )
+        connector.repo = repo
+        connector.services.repos = SimpleNamespace(
+            connector_repo=repo,
+            secret_repo=connector.services.secret_repo,
+            settings_repo=connector.services.settings_repo,
+            user_repo=connector.services.user_repo,
+        )
+
+        async def platform_request(
+            config: dict[str, Any], method: str, path: str, **kwargs: Any
+        ) -> httpx.Response:
+            if path == "/oauth2/token":
+                code = kwargs["data"]["code"]
+                return response(
+                    {"access_token": f"token-{code}", "refresh_token": f"refresh-{code}"}
+                )
+            if path == "/gateway/me":
+                uid = int(kwargs["headers"]["Authorization"].split("-")[1])
+                return response({"employeeNo": f"{uid:04}"})
+            if path == "/mcp/sql":
+                return response({"result": {"content": []}})
+            assert path == "/oauth2/revoke"
+            return response({})
+
+        request = AsyncMock(side_effect=platform_request)
+        monkeypatch.setattr(cf, "request", request)
+
+        async def authorize(uid: int, suffix: str = "first") -> None:
+            state_id = f"{uid}-{suffix}"
+            context = {
+                **connector.settings(),
+                "client_id": f"client-{uid}",
+                "client_secret": f"secret-{uid}",
+                "redirect_uri": "http://octop.internal/api/connectors/oauth/callback",
+                "created_at": time.time(),
+            }
+            connector.services.settings_repo.set(
+                cf.CONTEXT_KEY + state_id,
+                base64.b64encode(
+                    encrypt_credentials(connector.services.secret_repo, context)
+                ).decode("ascii"),
+            )
+            await connector.complete(
+                SimpleNamespace(state_id=state_id, user_id=uid, code_verifier="verifier"),
+                f"{uid}-{suffix}",
+            )
+
+        if not legacy_first_employee:
+            await authorize(7)
+        first = repo.get_by_user_kind(7, "chartforge")
+        assert first is not None
+        # Both new installations and existing single-user installations must work.
+        await asyncio.gather(authorize(8), authorize(9))
+        assert repo.get_by_user_kind(7, "chartforge") == first
+        rows = repo.list_by_kind("chartforge")
+        assert len(rows) == len({row.mcp_server_name for row in rows}) == 3
+        assert all(not row.shared for row in rows)
+
+        config = OctopConfig()
+        service = ConnectorService(
+            repo=repo,
+            secret_repo=connector.services.secret_repo,
+            settings_repo=connector.services.settings_repo,
+            config=config,
+        )
+        for uid in (7, 8, 9):
+            assert connector.status(uid)["connected"] is True
+            assert service.list_active_mcp_server_names(uid) == ["chartforge"]
+            assert service.list_default_open_mcp_server_names(uid) == ["chartforge"]
+            assert service.merge_turn_mcp_servers(uid, None) == ["chartforge"]
+            assert service.merge_turn_mcp_servers(uid, [], apply_defaults=False) is None
+            assert service.merge_turn_mcp_servers(uid, ["chartforge"], apply_defaults=False) == [
+                "chartforge"
+            ]
+            assert service.validate_mcp_servers_for_user(uid, ["chartforge"]) == ["chartforge"]
+            assert service.reserved_builtin_mcp_names(uid) == {"chartforge"}
+            instances = service.list_instances_for_api(uid)
+            assert len(instances) == 1 and instances[0]["mcp_server_name"] == "chartforge"
+            assert instances[0]["owner_user_id"] == uid
+            configs = build_mcp_server_configs_for_user(
+                svc=service,
+                connector_repo=repo,
+                user_id=uid,
+                agent_id="test",
+                agent_user_id=uid,
+                config=config,
+                log=False,
+            )
+            assert configs == {"chartforge": {}}
+            assert await service.mcp_configs_for_user(uid) == {"chartforge": {}}
+            assert gateway_mcp_server_names(connector_repo=repo, user_id=uid) == {"chartforge"}
+            tools: list[Any] = []
+            agent = SimpleNamespace(_mcp_tools=tools, inject_mcp_tools=tools.extend)
+            manager = SimpleNamespace(_repos=connector.services.repos)
+            AgentManager._attach_chartforge_tools(manager, agent, configs)
+            assert len(tools) == 7
+            assert {tool.name for tool in tools} == {
+                tool.name for tool in cf.build_tools(connector.services)
+            }
+            assert (
+                filter_tools_for_mcp_servers(
+                    tools,
+                    mcp_tool_names=mcp_tool_names(tools),
+                    server_names=frozenset(configs),
+                    active_servers=["chartforge"],
+                )
+                == tools
+            )
+            assert (
+                filter_tools_for_mcp_servers(
+                    tools,
+                    mcp_tool_names=mcp_tool_names(tools),
+                    server_names=frozenset(configs),
+                    active_servers=[],
+                )
+                == []
+            )
+            AgentManager._attach_chartforge_tools(manager, agent, configs)
+            assert len(tools) == 7
+
+        second = repo.get_by_user_kind(8, "chartforge")
+        await authorize(8, "again")
+        updated = repo.get_by_user_kind(8, "chartforge")
+        assert second is not None and updated is not None
+        assert updated.instance_id == second.instance_id
+        assert updated.mcp_server_name == second.mcp_server_name
+        assert len(repo.list_by_kind("chartforge")) == 3
+        assert repo.get_by_user_kind(7, "chartforge") == first
+        request.reset_mock()
+        await asyncio.gather(*(connector.call(uid, "list_connections", {}) for uid in (7, 8, 9)))
+        assert {call.kwargs["headers"]["Authorization"] for call in request.call_args_list} == {
+            "Bearer token-7" if legacy_first_employee else "Bearer token-7-first",
+            "Bearer token-8-again",
+            "Bearer token-9-first",
+        }
+        request.reset_mock()
+        await connector.disconnect(8)
+        assert repo.get_by_user_kind(8, "chartforge") is None
+        assert repo.get_by_user_kind(7, "chartforge") == first
+        assert connector.status(9)["connected"] is True
+        assert {call.kwargs["data"]["token"] for call in request.call_args_list} == {
+            "token-8-again",
+            "refresh-8-again",
+        }
+    finally:
+        pool.close()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("locale", ["zh", "en"])
+@pytest.mark.parametrize("reason", ["identityMismatch", "connectionFailed", None])
+async def test_callback_distinguishes_employee_and_server_errors(
+    connector: cf.ChartForgeConnector,
+    monkeypatch: pytest.MonkeyPatch,
+    locale: str,
+    reason: str | None,
+) -> None:
+    from fastapi import Request
+
+    from octop.api.routers.chartforge import complete_callback
+    from octop.i18n import tr
+
+    error = cf.failure(reason) if reason else RuntimeError("private database details <secret>")
+    monkeypatch.setattr(cf.ChartForgeConnector, "complete", AsyncMock(side_effect=error))
+    result = await complete_callback(
+        Request({"type": "http", "headers": [(b"accept-language", locale.encode())]}),
+        SimpleNamespace(services=connector.services, app_runtime=None),
+        SimpleNamespace(user_id=8),
+        "code",
+    )
+    assert result.status_code == (400 if reason else 500)
+    html = bytes(result.body).decode()
+    assert tr(f"chartforge.{reason or 'authorizationFailed'}", locale) in html
+    assert "private database details" not in html
+
+
+@pytest.mark.asyncio
+async def test_failed_persistence_revokes_only_the_new_grant(
+    connector: cf.ChartForgeConnector, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    context = {
+        **connector.settings(),
+        "client_id": "client",
+        "client_secret": "secret",
+        "redirect_uri": "http://octop.internal/api/connectors/oauth/callback",
+        "created_at": time.time(),
+    }
+    connector.services.settings_repo.set(
+        cf.CONTEXT_KEY + "state",
+        base64.b64encode(encrypt_credentials(connector.services.secret_repo, context)).decode(
+            "ascii"
+        ),
+    )
+    original = connector.repo.rows[7].credential_blob
+    monkeypatch.setattr(connector.repo, "get_by_user_kind", lambda *_: None)
+    monkeypatch.setattr(
+        connector.repo,
+        "create",
+        Mock(side_effect=RuntimeError("database unavailable")),
+        raising=False,
+    )
+    request = AsyncMock(
+        side_effect=[
+            response({"access_token": "new-token", "refresh_token": "new-refresh"}),
+            response({"employeeNo": "0007"}),
+            response({}),
+            response({}),
+        ]
+    )
+    monkeypatch.setattr(cf, "request", request)
+    with pytest.raises(RuntimeError, match="database unavailable"):
+        await connector.complete(
+            SimpleNamespace(state_id="state", user_id=7, code_verifier="v"), "code"
+        )
+    assert connector.repo.rows[7].credential_blob == original
+    assert {call.kwargs["data"]["token"] for call in request.call_args_list[2:]} == {
+        "new-token",
+        "new-refresh",
+    }

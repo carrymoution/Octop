@@ -8,6 +8,7 @@ from octop_harness.slash import SlashCommand, SlashSink
 
 from octop.i18n.domains.slash import localized_rows, tr
 from octop.infra.agents.security import tool_execution_may_pause
+from octop.infra.connectors.builder import runtime_mcp_server_name
 from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.gateway.slash.catalog import channel_origin
 from octop.infra.gateway.slash.ctx import SlashCtx, ensure_thread_id, lang_of, resolve_user_agent
@@ -150,7 +151,7 @@ async def cmd_connectors(
     if not rows:
         await sink.text(tr("connectors.empty", lang))
         return
-    bullets = [f"`{r.mcp_server_name}` **{r.display_name}** ({r.kind})" for r in rows[:20]]
+    bullets = [f"`{runtime_mcp_server_name(r)}` **{r.display_name}** ({r.kind})" for r in rows[:20]]
     await sink.text(markdown_bullets(tr("connectors.title", lang), bullets))
 
 

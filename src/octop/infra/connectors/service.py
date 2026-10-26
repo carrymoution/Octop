@@ -11,7 +11,12 @@ from weakref import WeakKeyDictionary
 
 from octop.config import OctopConfig
 from octop.infra.connectors import qcc
-from octop.infra.connectors.builder import build_http_mcp_spec, mcp_server_name, new_internal_token
+from octop.infra.connectors.builder import (
+    build_http_mcp_spec,
+    mcp_server_name,
+    new_internal_token,
+    runtime_mcp_server_name,
+)
 from octop.infra.connectors.catalog import get_catalog_entry, uses_internal_http_mcp
 from octop.infra.connectors.crypto import decrypt_credentials, encrypt_credentials
 from octop.infra.connectors.custom_mcp import (
@@ -286,7 +291,7 @@ class ConnectorService:
         for inst in self._repo.list_by_user(user_id):
             if is_custom_mcp_kind(inst.kind):
                 continue
-            names.add(inst.mcp_server_name)
+            names.add(runtime_mcp_server_name(inst))
         return names
 
     def get_custom_servers(self, user_id: int) -> dict[str, Any]:
@@ -478,7 +483,7 @@ class ConnectorService:
                     "display_name": inst.display_name,
                     "description": config.get("description"),
                     "status": inst.status,
-                    "mcp_server_name": inst.mcp_server_name,
+                    "mcp_server_name": runtime_mcp_server_name(inst),
                     "has_credentials": inst.has_credentials,
                     "default_open": read_default_open(config),
                     "shared": inst.shared,
@@ -516,7 +521,7 @@ class ConnectorService:
                 continue
             if inst.status != "active" or not inst.has_credentials:
                 continue
-            names.append(inst.mcp_server_name)
+            names.append(runtime_mcp_server_name(inst))
         for name, spec in self.get_custom_servers(user_id).items():
             if isinstance(spec, dict) and server_enabled(spec):
                 names.append(name)
@@ -537,7 +542,7 @@ class ConnectorService:
             if inst.status != "active" or not inst.has_credentials:
                 continue
             if read_default_open(ConnectorRepo.parse_config_json(inst)):
-                names.append(inst.mcp_server_name)
+                names.append(runtime_mcp_server_name(inst))
         for name, spec in self.get_custom_servers(user_id).items():
             if not isinstance(spec, dict) or not server_enabled(spec):
                 continue
@@ -612,7 +617,7 @@ class ConnectorService:
             creds = await self.ensure_fresh_credentials(inst.instance_id, inst.kind)
             if not creds:
                 continue
-            configs[inst.mcp_server_name] = build_http_mcp_spec(
+            configs[runtime_mcp_server_name(inst)] = build_http_mcp_spec(
                 entry=entry,
                 instance_id=inst.instance_id,
                 creds=creds,
