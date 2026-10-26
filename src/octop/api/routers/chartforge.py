@@ -20,13 +20,13 @@ logger = logging.getLogger(__name__)
 
 
 class ChartForgeSettings(BaseModel):
-    base_url: str = Field(description="ChartForge server origin, without a path.")
+    base_url: str = Field(description="ChartForge public platform origin, without a path.")
     frontend_url: str = Field(
         default="", description="Platform frontend origin for the employee link."
     )
     enabled: bool = False
     allow_http: bool = Field(
-        default=False, description="Allow HTTP only for the configured private origin."
+        default=False, description="Explicitly allow HTTP for the configured platform origin."
     )
 
 

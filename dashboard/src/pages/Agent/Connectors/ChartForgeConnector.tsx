@@ -298,7 +298,7 @@ export function ChartForgeConnector({
               },
             ]}
           >
-            <Input placeholder="http://localhost:8080" disabled={!!pending} />
+            <Input placeholder="http://ai.dgkaijin.com:5000" disabled={!!pending} />
           </Form.Item>
           {address?.trim().startsWith("http:") && (
             <Form.Item

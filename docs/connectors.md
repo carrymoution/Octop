@@ -67,6 +67,21 @@ are updating `catalog.json` in the same change.
 
 ## MCP modes / MCP 模式
 
+### AI报表查询：统一平台入口
+
+管理员在连接器中填写 ChartForge 的统一入口，例如 `http://ai.dgkaijin.com:5000`，
+HTTP 部署须勾选“允许此平台使用 HTTP”。员工授权、令牌续期、身份校验和 MCP 查询均可通过该入口，
+无需将 ChartForge 后端的 8080 端口开放到外网。
+
+ChartForge 生产配置中的 `SQL_GATEWAY_BASE_URL` 和 `SQL_GATEWAY_FRONTEND_URL` 都应设为此入口。
+入口 Nginx 必须转发 `/.well-known/oauth-authorization-server`、`/.well-known/oauth-protected-resource`、
+`/oauth2/`、`/gateway/oauth/`、`/gateway/me` 和 `/mcp/sql` 到内部后端；仅转发授权确认页不够。
+Octop 的完整回调地址仍需加入 `SQL_GATEWAY_OCTOP_CALLBACKS`，它是 Octop 的地址，不是 ChartForge 地址。
+
+The connector accepts the platform's public HTTP or HTTPS origin. HTTP requires explicit administrator opt-in.
+Route OAuth discovery, authorization, token, identity and MCP endpoints through the same reverse proxy;
+the ChartForge backend port can remain private. Requests remain pinned to the configured host and do not follow redirects.
+
 | Mode | Meaning | 含义 |
 |------|---------|------|
 | `remote` | The harness talks to the vendor MCP URL. | Harness 直连厂商 MCP 地址。 |
