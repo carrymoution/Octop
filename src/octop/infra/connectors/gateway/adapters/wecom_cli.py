@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import shlex
 from pathlib import Path
 from typing import Any
 
@@ -18,6 +19,11 @@ from octop.infra.utils.paths import PathLayout
 
 _KIND = "wecom-cli"
 _CATEGORIES = ("doc", "schedule", "msg")
+_CLI_DOMAIN_BY_CATEGORY = {
+    "doc": "doc",
+    "schedule": "calendar",
+    "msg": "message",
+}
 
 _MISSING_CLI_MSG = (
     "企业微信 CLI 未安装或不在 PATH。"
@@ -31,17 +37,19 @@ _BAD_CREDS_MSG = (
 )
 
 _DOC_METHODS_HINT = (
-    "常用 method：create_doc、get_doc_content、edit_doc_content、"
-    "smartsheet_get_sheet、smartsheet_get_records；"
-    "没有 list。不确定时先调 help(category=doc)。"
+    "文档命令路径示例：create、search、import、contents get/append/overwrite、"
+    "names update、members update。method 是相对 doc 的 CLI 子命令路径，"
+    "args 是 JSON 对象编码成的文本；例如搜索时传 {\"keywords\":[\"关键词\"]}。"
+    "不确定时先调 help(category=doc, method=...)."
 )
 
 TOOLS: list[dict[str, Any]] = [
     {
         "name": "doc",
         "description": (
-            "WeCom docs / smartsheet via Octop Connectors. "
-            "Pass method + optional args JSON. "
+            "WeCom docs via the official CLI. "
+            "Pass a CLI subcommand path relative to doc (e.g. search, create, contents get) "
+            "and pass the request body in args as JSON text. "
             f"{_DOC_METHODS_HINT} "
             "On setup/auth errors, tell the user to fix Bot credentials "
             "in Connectors — never run shell/CLI commands."
@@ -49,10 +57,16 @@ TOOLS: list[dict[str, Any]] = [
         "inputSchema": {
             "type": "object",
             "properties": {
-                "method": {"type": "string", "description": "CLI method name"},
+                "method": {
+                    "type": "string",
+                    "description": "CLI subcommand path relative to doc, e.g. search or contents get",
+                },
                 "args": {
-                    "type": "object",
-                    "description": "JSON args object (default {})",
+                    "type": "string",
+                    "description": (
+                        "JSON-encoded request body, e.g. "
+                        '{"keywords":["search term"]}'
+                    ),
                 },
             },
             "required": ["method"],
@@ -61,16 +75,23 @@ TOOLS: list[dict[str, Any]] = [
     {
         "name": "schedule",
         "description": (
-            "WeCom schedule via Octop Connectors. "
-            "Pass method + optional args. "
+            "WeCom calendar and schedules via the official CLI. "
+            "Use method paths relative to calendar, e.g. schedules list or schedules create; "
+            "pass the request body in args as JSON text. "
             "Enterprise may not authorize schedule for bots — surface that "
             "permission error to the user. Never run CLI in shell."
         ),
         "inputSchema": {
             "type": "object",
             "properties": {
-                "method": {"type": "string"},
-                "args": {"type": "object"},
+                "method": {
+                    "type": "string",
+                    "description": "CLI subcommand path relative to calendar, e.g. schedules list",
+                },
+                "args": {
+                    "type": "string",
+                    "description": "JSON-encoded request object passed to the CLI",
+                },
             },
             "required": ["method"],
         },
@@ -78,28 +99,38 @@ TOOLS: list[dict[str, Any]] = [
     {
         "name": "msg",
         "description": (
-            "WeCom messaging via Octop Connectors. "
-            "Pass method + optional args. "
+            "WeCom messaging via the official CLI domain message. "
+            "Use method paths relative to message, e.g. send; pass the request body in args as JSON text. "
             "On auth errors, fix Bot credentials in Connectors — never run CLI in shell."
         ),
         "inputSchema": {
             "type": "object",
             "properties": {
-                "method": {"type": "string"},
-                "args": {"type": "object"},
+                "method": {"type": "string", "description": "CLI subcommand path relative to message"},
+                "args": {
+                    "type": "string",
+                    "description": "JSON-encoded request object passed to the CLI",
+                },
             },
             "required": ["method"],
         },
     },
     {
         "name": "help",
-        "description": "List WeCom CLI methods for a category (doc|schedule|msg)",
+        "description": (
+            "Show wecom-cli help for a category (doc|schedule|msg). "
+            "Optionally pass method as a subcommand path for detailed help."
+        ),
         "inputSchema": {
             "type": "object",
             "properties": {
                 "category": {
                     "type": "string",
                     "description": "doc | schedule | msg",
+                },
+                "method": {
+                    "type": "string",
+                    "description": "Optional CLI subcommand path, e.g. search or contents get",
                 },
             },
             "required": ["category"],
@@ -118,19 +149,48 @@ def call_tool(creds: dict[str, Any], name: str, args: dict[str, Any]) -> str:
         env = _prepare_env(creds)
         if name == "help":
             category = str(args.get("category") or "").strip()
-            if category not in _CATEGORIES:
+            domain = _CLI_DOMAIN_BY_CATEGORY.get(category)
+            if domain is None:
                 raise ValueError("category must be one of: doc, schedule, msg")
-            return run_cli([binary, category, "--help"], env=env)
-        if name in _CATEGORIES:
             method = str(args.get("method") or "").strip()
-            if not method:
-                raise ValueError("method is required")
-            payload = args.get("args") if isinstance(args.get("args"), dict) else {}
-            return run_cli(
-                [binary, name, method, json.dumps(payload, ensure_ascii=False)],
-                env=env,
-            )
-        raise ValueError(f"unknown WeCom CLI tool: {name}")
+            method_tokens = shlex.split(method) if method else []
+            return run_cli([binary, domain, *method_tokens, "--help"], env=env)
+
+        domain = _CLI_DOMAIN_BY_CATEGORY.get(name)
+        if domain is None:
+            raise ValueError(f"unknown WeCom CLI tool: {name}")
+        method = str(args.get("method") or "").strip()
+        method_tokens = shlex.split(method)
+        if not method_tokens:
+            raise ValueError("method is required")
+        raw_payload = args.get("args")
+        if isinstance(raw_payload, dict):
+            payload = raw_payload
+        elif isinstance(raw_payload, str):
+            try:
+                payload = json.loads(raw_payload)
+            except json.JSONDecodeError as exc:
+                raise ValueError("args must be a JSON-encoded object") from exc
+            if not isinstance(payload, dict):
+                raise ValueError("args must be a JSON object")
+        elif raw_payload is None:
+            payload = {
+                key: value
+                for key, value in args.items()
+                if key not in {"method", "category", "args"}
+            }
+        else:
+            raise ValueError("args must be a JSON object")
+        return run_cli(
+            [
+                binary,
+                domain,
+                *method_tokens,
+                "--json",
+                json.dumps(payload, ensure_ascii=False),
+            ],
+            env=env,
+        )
     except ValueError as exc:
         raise ValueError(_humanize_cli_error(str(exc))) from exc
 
