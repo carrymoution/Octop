@@ -188,7 +188,8 @@ def test_wecom_doc_invokes_cli(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) 
     )
     assert out == '{"ok":true}'
     assert captured["argv"][:3] == [fake_bin_path("wecom-cli"), "doc", "create_doc"]
-    assert json.loads(captured["argv"][3]) == {"doc_type": 3}
+    assert captured["argv"][3] == "--json"
+    assert json.loads(captured["argv"][4]) == {"doc_type": 3}
     assert "WECOM_CLI_CONFIG_DIR" in (captured["env"] or {})
     cfg = Path(str((captured["env"] or {})["WECOM_CLI_CONFIG_DIR"]))
     assert cfg.is_relative_to(tmp_path)

@@ -50,7 +50,7 @@ def connector() -> cf.ChartForgeConnector:
         settings_repo=SimpleNamespace(
             get=values.get, set=values.__setitem__, delete=lambda k: values.pop(k, None)
         ),
-        secret_repo=SimpleNamespace(get_or_create=lambda *_: key),
+        secret_repo=Mock(get_or_create=lambda *_: key),
         user_repo=SimpleNamespace(
             get=lambda uid: SimpleNamespace(username=f"{uid:04}", disabled=0)
         ),
@@ -396,10 +396,13 @@ async def test_reauthorization_updates_real_repository_and_replaces_encrypted_gr
             display_name="Old name",
             mcp_server_name="chartforge",
         )
-        repo.upsert_credentials(
-            instance_id="existing", blob=encrypt_credentials(connector.services.secret_repo, old)
+        # Pre-sync grants used Fernet directly with the same persistent key.
+        legacy_blob = Fernet(connector.services.secret_repo.get_or_create()).encrypt(
+            json.dumps(old, ensure_ascii=False).encode("utf-8")
         )
+        repo.upsert_credentials(instance_id="existing", blob=legacy_blob)
         connector.repo = repo
+        assert connector.status(7)["connected"] is True
         context = {
             **connector.settings(),
             "client_id": "client",

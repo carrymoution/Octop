@@ -12,6 +12,7 @@ from urllib.parse import parse_qs, urlsplit
 
 import pytest
 
+from octop.infra.connectors.crypto import encrypt_credentials
 from octop.infra.connectors.custom_mcp import CUSTOM_MCP_KIND
 from octop.infra.connectors.oauth.registry import save_oauth_ctx
 from octop.infra.utils.ulid import new_ulid
@@ -94,6 +95,43 @@ async def test_catalog(env):
         "credential_fields": [],
         "supports_quick_auth": True,
     }
+
+
+@pytest.mark.parametrize(
+    "changes",
+    [
+        {"shared": True},
+        {"visibility": "all"},
+        {"visibility": "all", "shared": False},
+        {"visibility": "groups", "group_ids": ["test-group"]},
+        {"credentials": {"access_token": "replacement"}},
+    ],
+)
+async def test_chartforge_personal_grant_cannot_be_shared_or_replaced(env, changes):
+    c, srv, auth, _ = env
+    user_id = await resolve_user_id(c, auth, "admin")
+    repo = srv.services.repos.connector_repo
+    instance_id = new_ulid()
+    repo.create(
+        instance_id=instance_id,
+        user_id=user_id,
+        kind="chartforge",
+        display_name="AI报表查询",
+        mcp_server_name=f"chartforge__{instance_id}",
+    )
+    repo.upsert_credentials(
+        instance_id=instance_id,
+        blob=encrypt_credentials(srv.services.secret_repo, {"access_token": "original-grant"}),
+    )
+    before = repo.get(instance_id)
+    result = await c.patch(
+        f"/api/connector-instances/{instance_id}",
+        headers=auth,
+        json={**changes, "display_name": "must not be applied"},
+    )
+    assert result.status_code == 400
+    assert result.json()["error"]["details"]["reason_key"] == "chartforge.useAuthorize"
+    assert repo.get(instance_id) == before
 
 
 async def test_catalog_localizes_with_accept_language(env):
