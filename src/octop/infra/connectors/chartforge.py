@@ -473,6 +473,7 @@ def build_tools(services: Any) -> list[Any]:
     from langchain_core.tools import StructuredTool
     from langgraph.config import get_config
     from octop_harness.mcp import mcp_args_model
+    from pydantic import create_model
 
     from octop.infra.utils.browser_media import parse_octop_user_id
 
@@ -516,20 +517,32 @@ def build_tools(services: Any) -> list[Any]:
 
         return run
 
+    def arguments_model(name: str, props: dict[str, Any], required: list[str]) -> type[Any]:
+        model = mcp_args_model(
+            f"chartforge_{name}",
+            {
+                "type": "object",
+                "properties": props,
+                "required": required,
+                "additionalProperties": False,
+            },
+        )
+        if "parameters" not in props:
+            return model
+        # The harness scalar schema helper maps objects to strings. Keep named SQL
+        # bindings as a JSON object, including null values and string employee codes.
+        return create_model(
+            model.__name__,
+            __base__=model,
+            parameters=(dict[str, str | int | float | bool | None] | None, None),
+        )
+
     return [
         StructuredTool.from_function(
             coroutine=invoke(name),
             name=f"chartforge_{name}",
             description=tr(f"chartforge.tools.{name}"),
-            args_schema=mcp_args_model(
-                f"chartforge_{name}",
-                {
-                    "type": "object",
-                    "properties": props,
-                    "required": required,
-                    "additionalProperties": False,
-                },
-            ),
+            args_schema=arguments_model(name, props, required),
         )
         for name, props, required in definitions
     ]

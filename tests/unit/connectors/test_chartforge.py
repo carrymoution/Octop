@@ -607,6 +607,68 @@ async def test_missing_turn_identity_is_rejected(
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("name", ["query_sql", "run_saved_query"])
+async def test_bound_parameters_remain_an_object_through_actual_tool_invocation(
+    connector: cf.ChartForgeConnector, monkeypatch: pytest.MonkeyPatch, name: str
+) -> None:
+    import langgraph.config
+
+    monkeypatch.setattr(langgraph.config, "get_config", lambda: {"configurable": {"user": 7}})
+    request = AsyncMock(return_value=response({"result": {"content": [], "isError": False}}))
+    monkeypatch.setattr(cf, "request", request)
+    tool = next(
+        tool for tool in cf.build_tools(connector.services) if tool.name == f"chartforge_{name}"
+    )
+    parameters = {
+        "startDate": "2026-10-01",
+        "endDate": "2026-11-01",
+        "employeeNo": "0008",
+        "minimum": 0,
+        "ratio": 1.5,
+        "flag": False,
+        "optional": None,
+    }
+    arguments = (
+        {"connectionId": 12, "sql": "SELECT id FROM example WHERE id=:minimum"}
+        if name == "query_sql"
+        else {"queryId": 34}
+    )
+    arguments.update(parameters=parameters, maxRows=50)
+    assert tool.args_schema.model_json_schema()["properties"]["parameters"]["type"] == "object"
+    await tool.ainvoke(arguments)
+    sent = request.call_args.kwargs
+    assert sent["json"]["params"] == {"name": name, "arguments": arguments}
+    assert sent["headers"]["Authorization"] == "Bearer token-7"
+    assert sent["json"]["params"]["arguments"]["parameters"]["optional"] is None
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("name", ["query_sql", "run_saved_query"])
+@pytest.mark.parametrize("parameters", ['{"id":1}', [1], {"id": [1]}, {"id": {"value": 1}}])
+async def test_non_object_or_non_scalar_bindings_are_rejected_before_request(
+    connector: cf.ChartForgeConnector,
+    monkeypatch: pytest.MonkeyPatch,
+    name: str,
+    parameters: Any,
+) -> None:
+    from pydantic import ValidationError
+
+    request = AsyncMock()
+    monkeypatch.setattr(cf, "request", request)
+    tool = next(
+        tool for tool in cf.build_tools(connector.services) if tool.name == f"chartforge_{name}"
+    )
+    arguments = (
+        {"connectionId": 12, "sql": "SELECT id FROM example"}
+        if name == "query_sql"
+        else {"queryId": 34}
+    )
+    with pytest.raises(ValidationError):
+        await tool.ainvoke({**arguments, "parameters": parameters})
+    request.assert_not_called()
+
+
+@pytest.mark.asyncio
 async def test_expired_refresh_grant_marks_connection_as_needing_authorization(
     connector: cf.ChartForgeConnector, monkeypatch: pytest.MonkeyPatch
 ) -> None:
