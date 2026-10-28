@@ -2008,6 +2008,8 @@ function upsertToolCall(
             displayName: nextDisplay,
             callId: nextCallId,
             arguments: nextArgs,
+            detailsRedacted:
+              chunk.details_redacted || m.toolData?.detailsRedacted,
           },
         }),
         ...state.messages.slice(idx + 1),
@@ -2030,6 +2032,7 @@ function upsertToolCall(
         displayName: chunk.display_name,
         callId,
         arguments: chunk.args ?? "",
+        detailsRedacted: chunk.details_redacted,
       },
       status: "streaming",
       timestamp: Date.now(),
@@ -2197,6 +2200,14 @@ function closeToolCall(
       toolData: {
         ...(target.toolData ?? {}),
         output,
+        detailsRedacted:
+          target.toolData?.detailsRedacted ||
+          messages.some(
+            (raw) =>
+              raw !== null &&
+              typeof raw === "object" &&
+              (raw as Record<string, unknown>).details_redacted === true,
+          ),
         errorCode,
         ...(artifact != null ? { artifact } : {}),
       },

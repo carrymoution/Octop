@@ -511,6 +511,9 @@ function convertCallEntries(entries: CallEntry[]): ChatMessage[] {
           toolData: {
             ...existing.toolData,
             output: current.toolData?.output,
+            detailsRedacted:
+              existing.toolData?.detailsRedacted ||
+              current.toolData?.detailsRedacted,
             errorCode: current.toolData?.errorCode,
             returnCode: current.toolData?.returnCode,
             ...(current.toolData?.artifact != null

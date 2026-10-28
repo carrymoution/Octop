@@ -1137,6 +1137,16 @@
       "query_sql": "Execute a read-only SELECT within the current employee permissions",
       "list_saved_queries": "List authorized parameterized queries",
       "run_saved_query": "Run an authorized parameterized query"
+    },
+    "display": {
+      "running": "Querying report data",
+      "completed": "Query completed",
+      "failed": "Query failed. Check the platform audit record.",
+      "context": "Internal report query context is hidden",
+      "rows": "{count} rows",
+      "elapsed": "{seconds} s",
+      "truncated": "Result limit reached",
+      "audit": "Audit ID: {id}"
     }
   }
 }

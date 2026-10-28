@@ -1,5 +1,5 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import type { TrajectoryEvent } from "../../../api/modules/trajectory";
 
 const eventMock = vi.fn();
@@ -18,6 +18,12 @@ vi.mock("../../../api/modules/trajectory", async (importOriginal) => {
 });
 
 import TrajectoryInspector, { findSourceEventId } from "./TrajectoryInspector";
+
+// Load the lazy Markdown dependencies before preview assertions so they do not
+// time the first module import against waitFor's one-second deadline.
+beforeAll(async () => {
+  await import("../../../components/Markdown");
+}, 60000);
 
 function event(
   overrides: Partial<TrajectoryEvent> &
@@ -48,6 +54,29 @@ describe("findSourceEventId", () => {
 });
 
 describe("TrajectoryInspector", () => {
+  it("shows report summaries without Raw, Payload, or Result tabs", () => {
+    const { container } = render(
+      <TrajectoryInspector
+        agentId="A1"
+        threadId="T1"
+        event={event({
+          event_id: "private",
+          kind: "tool",
+          payload: {
+            name: "chartforge_query_sql",
+            details_redacted: true,
+            status: "completed",
+            row_count: 2,
+            args: "SELECT SECRET FROM ADS.PRIVATE_TABLE",
+          },
+        })}
+      />,
+    );
+    expect(screen.getByTestId("chartforge-activity")).toBeInTheDocument();
+    expect(screen.queryByRole("tab")).not.toBeInTheDocument();
+    expect(eventMock).not.toHaveBeenCalled();
+    expect(container.textContent).not.toContain("PRIVATE_TABLE");
+  });
   beforeEach(() => {
     eventMock.mockReset();
   });

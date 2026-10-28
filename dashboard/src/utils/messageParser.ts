@@ -172,7 +172,12 @@ export function extractToolData(
     if (d.name && d.arguments !== undefined) {
       return {
         kind: "call",
-        data: { name: d.name, callId: d.call_id, arguments: d.arguments },
+        data: {
+          name: d.name,
+          callId: d.call_id,
+          arguments: d.arguments,
+          detailsRedacted: d.details_redacted === true,
+        },
       };
     }
     if (d.output !== undefined) {
@@ -181,6 +186,7 @@ export function extractToolData(
         data: {
           name: d.name,
           callId: d.call_id,
+          detailsRedacted: d.details_redacted === true,
           output:
             typeof d.output === "string"
               ? d.output
@@ -202,6 +208,7 @@ export function extractToolData(
       data: {
         name: (b.name as string) || "",
         callId: (b.id as string) || "",
+        detailsRedacted: b.details_redacted === true,
         arguments: b.input !== undefined ? JSON.stringify(b.input) : "{}",
       },
     };
@@ -215,6 +222,7 @@ export function extractToolData(
       data: {
         name: (b.name as string) || "",
         callId: (b.id as string) || "",
+        detailsRedacted: b.details_redacted === true,
         output:
           typeof b.output === "string"
             ? b.output

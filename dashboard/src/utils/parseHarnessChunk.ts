@@ -34,6 +34,7 @@ export interface ReasoningChunk {
 }
 
 export interface ToolCallChunk {
+  details_redacted?: boolean;
   type: "tool_call_chunk";
   /** Stable tool-call id from the harness stream (preferred correlation key). */
   id?: string;
@@ -216,6 +217,7 @@ export function parseHarnessChunk(line: string): HarnessChunk | null {
     case "tool_call_chunk":
       return {
         type: "tool_call_chunk",
+        details_redacted: obj.details_redacted === true,
         id:
           typeof obj.id === "string" && obj.id.trim()
             ? obj.id.trim()

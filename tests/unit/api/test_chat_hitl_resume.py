@@ -9,7 +9,58 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from octop.api.routers.chat.routes import iter_dashboard_hitl_resume_sse
+from octop.infra.connectors.chartforge_display import ChartForgeDisplay
 from octop.infra.gateway.hitl.coordinator import HitlChannelCoordinator
+
+
+@pytest.mark.asyncio
+async def test_report_resume_filters_reasoning_sql_and_raw_errors_without_mutating_chunks():
+    private = "SELECT SECRET FROM ADS.PRIVATE_TABLE"
+    chunks = [
+        {"type": "reasoning", "content": private},
+        {"type": "tool_call_chunk", "name": "chartforge_query_sql", "id": "c", "args": private},
+        {
+            "type": "tool_result",
+            "messages": [
+                {
+                    "type": "tool",
+                    "name": "chartforge_query_sql",
+                    "tool_call_id": "c",
+                    "status": "error",
+                    "content": private,
+                }
+            ],
+        },
+        {"type": "token", "content": "业务结果"},
+    ]
+
+    async def resume(**kwargs):
+        for chunk in chunks:
+            yield chunk
+        raise RuntimeError(private)
+
+    processor = MagicMock()
+    processor.iter_hitl_resume_chunks = resume
+    frames = [
+        frame
+        async for frame in iter_dashboard_hitl_resume_sse(
+            server=object(),
+            processor=processor,
+            hitl_coordinator=HitlChannelCoordinator(),
+            agent_id="a",
+            thread_id="t",
+            user_id=1,
+            decisions=[],
+            pending=None,
+            session_key="s",
+            channel_type="dashboard",
+            locale="zh",
+            is_disconnected=AsyncMock(return_value=False),
+            display=ChartForgeDisplay(protected=True),
+        )
+    ]
+    assert private not in "".join(frames) and "details_redacted" in "".join(frames)
+    assert chunks[1]["args"] == private
 
 
 def _parse_sse_chunks(raw: str) -> list[dict[str, Any]]:

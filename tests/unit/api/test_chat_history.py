@@ -240,6 +240,8 @@ async def test_list_threads_derives_has_messages_from_db() -> None:
 @pytest.mark.asyncio
 async def test_get_thread_history_returns_has_more(monkeypatch: pytest.MonkeyPatch) -> None:
     server = MagicMock()
+    server.services.settings_repo.get.return_value = None
+    server.services.thread_message_repo.page.return_value = ([], False)
     row = MagicMock(agent_id="agt_1", user_id=1, artifacts=())
     server.app_runtime.gateway.thread_registry.get_thread.return_value = row
 
@@ -270,6 +272,8 @@ async def test_get_legacy_history_enqueues_without_reading_checkpoint(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     server = MagicMock()
+    server.services.settings_repo.get.return_value = None
+    server.services.thread_message_repo.page.return_value = ([], False)
     row = MagicMock(agent_id="agt_1", user_id=1, artifacts=())
     server.app_runtime.gateway.thread_registry.get_thread.return_value = row
     server.services.thread_message_repo.projection_status.return_value = "pending"
@@ -361,6 +365,8 @@ async def test_start_history_migration_queues_bounded_candidates() -> None:
 @pytest.mark.asyncio
 async def test_history_migration_waits_while_agent_is_active() -> None:
     server = MagicMock()
+    server.services.settings_repo.get.return_value = None
+    server.services.thread_message_repo.page.return_value = ([], False)
     server.app_runtime.agent_registry.is_agent_active.return_value = True
     server.services.thread_message_repo.migration_summary.return_value = ThreadProjectionSummary(
         pending=1

@@ -1,11 +1,32 @@
 import { describe, expect, it } from "vitest";
 import {
   extractText,
+  extractToolData,
   filterDialogueHistoryMessages,
   formatHistoryMessageText,
 } from "./messageParser";
 
 describe("formatHistoryMessageText", () => {
+  it("preserves redacted report calls and results across history reload", () => {
+    for (const block of [
+      {
+        type: "tool_use",
+        name: "chartforge_query_sql",
+        id: "c",
+        input: {},
+        details_redacted: true,
+      },
+      {
+        type: "tool_result",
+        name: "chartforge_query_sql",
+        id: "c",
+        output: "Query completed",
+        details_redacted: true,
+      },
+    ]) {
+      expect(extractToolData([block])?.data.detailsRedacted).toBe(true);
+    }
+  });
   it("returns tool output when text blocks are empty", () => {
     const content = [
       { type: "tool_result", output: "grep result", tool_use_id: "call_1" },

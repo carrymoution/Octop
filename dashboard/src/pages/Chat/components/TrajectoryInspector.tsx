@@ -16,6 +16,7 @@ import {
   coerceToolArgsText,
 } from "../utils/trajectoryModel";
 import styles from "./TrajectoryInspector.module.less";
+import ChartForgeActivity from "./ChartForgeActivity";
 
 export interface TrajectoryInspectorProps {
   agentId: string;
@@ -402,57 +403,70 @@ export default function TrajectoryInspector({
           ) : null}
         </div>
       </header>
-      <Tabs
-        destroyOnHidden
-        className={styles.tabs}
-        items={[
-          {
-            key: "summary",
-            label: t("chat.trajectoryInspectorSummary", "Summary"),
-            children: (
-              <SummaryPane
-                event={event}
-                events={events}
-                onSelectEvent={onSelectEvent}
-              />
-            ),
-          },
-          ...(event.kind === "tool"
-            ? [
-                {
-                  key: "payload",
-                  label: t("chat.trajectoryInspectorPayload", "Payload"),
-                  children: <PayloadPane event={event} />,
-                },
-              ]
-            : []),
-          {
-            key: "preview",
-            label:
-              event.kind === "tool"
-                ? t("chat.trajectoryInspectorResult", "Result")
-                : t("chat.trajectoryInspectorPreview", "Preview"),
-            children: (
-              <PreviewPane
-                agentId={agentId}
-                threadId={threadId}
-                event={event}
-              />
-            ),
-          },
-          {
-            key: "raw",
-            label: t("chat.trajectoryInspectorRaw", "Raw"),
-            children: (
-              <RawPane
-                agentId={agentId}
-                threadId={threadId}
-                eventId={event.event_id}
-              />
-            ),
-          },
-        ]}
-      />
+      {event.payload.details_redacted === true && event.kind !== "tool" ? (
+        <p>{t("chartforge.display.context")}</p>
+      ) : event.payload.details_redacted === true ? (
+        <ChartForgeActivity
+          toolData={{
+            detailsRedacted: true,
+            output: JSON.stringify(event.payload),
+            errorCode: event.is_error ? "tool_error" : undefined,
+          }}
+          isStreaming={event.payload.status === "running"}
+        />
+      ) : (
+        <Tabs
+          destroyOnHidden
+          className={styles.tabs}
+          items={[
+            {
+              key: "summary",
+              label: t("chat.trajectoryInspectorSummary", "Summary"),
+              children: (
+                <SummaryPane
+                  event={event}
+                  events={events}
+                  onSelectEvent={onSelectEvent}
+                />
+              ),
+            },
+            ...(event.kind === "tool"
+              ? [
+                  {
+                    key: "payload",
+                    label: t("chat.trajectoryInspectorPayload", "Payload"),
+                    children: <PayloadPane event={event} />,
+                  },
+                ]
+              : []),
+            {
+              key: "preview",
+              label:
+                event.kind === "tool"
+                  ? t("chat.trajectoryInspectorResult", "Result")
+                  : t("chat.trajectoryInspectorPreview", "Preview"),
+              children: (
+                <PreviewPane
+                  agentId={agentId}
+                  threadId={threadId}
+                  event={event}
+                />
+              ),
+            },
+            {
+              key: "raw",
+              label: t("chat.trajectoryInspectorRaw", "Raw"),
+              children: (
+                <RawPane
+                  agentId={agentId}
+                  threadId={threadId}
+                  eventId={event.event_id}
+                />
+              ),
+            },
+          ]}
+        />
+      )}
     </div>
   );
 }

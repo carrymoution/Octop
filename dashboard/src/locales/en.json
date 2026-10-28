@@ -7237,6 +7237,16 @@
     "issuerMismatch": "The address differs from the platform OAuth issuer. Use its gateway.base-url value exactly, including localhost versus 127.0.0.1.",
     "endpointMismatch": "The platform OAuth endpoints do not match the configured origin. Check gateway and reverse proxy settings.",
     "callbackNotAllowed": "The platform has not allowed the Octop callback: {{url}}. Add it to SQL_GATEWAY_OCTOP_CALLBACKS and restart the platform.",
-    "registrationFailed": "The platform rejected OAuth registration. Check gateway availability and the callback allowlist."
+    "registrationFailed": "The platform rejected OAuth registration. Check gateway availability and the callback allowlist.",
+    "display": {
+      "running": "Querying report data",
+      "completed": "Query completed",
+      "failed": "Query failed. Check the platform audit record.",
+      "context": "Internal report query context is hidden",
+      "rows": "{{count}} rows",
+      "elapsed": "{{seconds}} s",
+      "truncated": "Result limit reached",
+      "audit": "Audit ID: {{id}}"
+    }
   }
 }

@@ -307,6 +307,7 @@ async def get_thread_history(
     ``turn_active`` reports whether a turn is still streaming server-side, so a
     client that reloaded (or navigated away) can re-subscribe over the chat
     WebSocket instead of inferring liveness from the message list.
+    Report tools expose safe execution summaries; report conversations omit thinking.
     """
     row = _require_thread(server, agent_id, thread_id, user, as_user)
     page_limit = _clamp_history_limit(limit)
@@ -388,6 +389,11 @@ async def get_thread_history(
         user_id=effective_uid,
     )
     workspace_dir = _agent_facing_workspace_dir(server, agent_id)
+    from octop.api.common.chat_display import chat_display
+
+    display = await chat_display(server, agent_id, thread_id, user.locale or "en")
+    messages = display.project(messages)
+    hitl_pending = display.project(hitl_pending)
     return {
         "thread_id": thread_id,
         "messages": messages,
@@ -488,7 +494,7 @@ async def rebind_session(
 @router.get(
     "/agents/{agent_id}/threads/{thread_id}/history/export",
     summary="Export unrendered conversation history",
-    description="Read-only JSON export of legacy and versioned messages with archive turn status.",
+    description="Read-only JSON export of legacy and versioned messages with archive turn status. Report execution details and thinking are redacted for all viewers.",
 )
 async def export_history(
     thread_id: str,
@@ -509,11 +515,14 @@ async def export_history(
     messages = await export_messages(
         archive, server.app_runtime.agent_registry, agent_id, thread_id
     )
+    from octop.api.common.chat_display import chat_display
+
+    display = await chat_display(server, agent_id, thread_id, user.locale or "en")
     return JSONResponse(
         {
             "format": "octop-history-v2",
             "thread_id": thread_id,
-            "messages": messages,
+            "messages": display.project(messages),
             "latest_turn": await asyncio.to_thread(archive.store.turn, thread_id),
         },
         headers={"Content-Disposition": 'attachment; filename="history.json"'},

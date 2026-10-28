@@ -83,6 +83,21 @@ class ArchiveTrajectoryStore(TrajectoryStore):
         value = self.archive.store.get_event(event_id)
         return event_from_dict(value) if value is not None else super().get(event_id)
 
+    def list_from_seq(self, thread_id: str, *, from_seq: int, limit: int) -> list[TrajectoryEvent]:
+        # Reconnects must read the same merged archive as history and exports.
+        # Include the boundary event so same-seq tool-result upserts are replayed.
+        if limit <= 0:
+            return []
+        if not any(segment["format"] == "v2" for segment in self.archive.store.segments(thread_id)):
+            return super().list_from_seq(thread_id, from_seq=from_seq, limit=limit)
+        from itertools import islice
+
+        return list(
+            islice(
+                (event for event in self.iter_for_export(thread_id) if event.seq >= from_seq), limit
+            )
+        )
+
     def iter_for_export(self, thread_id: str) -> Iterator[TrajectoryEvent]:
         legacy = list(super().iter_for_export(thread_id))
         new = [

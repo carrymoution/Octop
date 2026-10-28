@@ -13,6 +13,8 @@ import type {
 import type { ContentBlockItem } from "../../../utils/messageParser";
 
 export interface ToolCallData {
+  /** Server-projected summary; raw execution details are unavailable. */
+  detailsRedacted?: boolean;
   name?: string;
   displayName?: string;
   callId?: string;

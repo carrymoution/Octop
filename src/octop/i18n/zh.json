@@ -1137,6 +1137,16 @@
       "query_sql": "按当前员工权限执行只读SELECT",
       "list_saved_queries": "列出已授权参数化查询",
       "run_saved_query": "执行已授权参数化查询"
+    },
+    "display": {
+      "running": "正在查询报表数据",
+      "completed": "查询完成",
+      "failed": "查询失败，请到平台查询审计查看原因",
+      "context": "报表查询的内部执行上下文已隐藏",
+      "rows": "{count} 行",
+      "elapsed": "耗时 {seconds} 秒",
+      "truncated": "结果已按上限截断",
+      "audit": "审计编号：{id}"
     }
   }
 }

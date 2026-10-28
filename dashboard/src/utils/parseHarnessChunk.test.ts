@@ -2,6 +2,13 @@ import { describe, expect, it } from "vitest";
 import { parseHarnessChunk, streamSpeakerId } from "./parseHarnessChunk";
 
 describe("parseHarnessChunk token", () => {
+  it("preserves the server redaction flag on tool calls", () => {
+    expect(
+      parseHarnessChunk(
+        'data: {"type":"tool_call_chunk","id":"c1","name":"chartforge_query_sql","args":"{}","details_redacted":true}',
+      ),
+    ).toMatchObject({ type: "tool_call_chunk", details_redacted: true });
+  });
   it("keeps a team-room speaker id on fanned-in tokens", () => {
     const chunk = parseHarnessChunk(
       'data: {"type":"token","content":"rest","agent_id":"doctor"}',

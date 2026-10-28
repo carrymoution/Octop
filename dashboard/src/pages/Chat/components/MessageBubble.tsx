@@ -3,6 +3,7 @@ import { Image, Tooltip } from "antd";
 import { message as antMessage } from "@/utils/antdMessage";
 
 import Markdown from "../../../components/Markdown/LazyMarkdown";
+import ChartForgeActivity from "./ChartForgeActivity";
 import {
   Copy,
   Check,
@@ -372,7 +373,26 @@ function toolUiDockLabel(
   return toolData.displayName?.trim() || toolData.name?.trim() || "Tool";
 }
 
-export function ToolDetailsInline({
+export function ToolDetailsInline(props: {
+  toolData: NonNullable<ChatMessage["toolData"]>;
+  isStreaming: boolean;
+  onAcpPermissionSelect?: (message: string) => void;
+  hideMediaPreview?: boolean;
+  agentId?: string | null;
+  forceInline?: boolean;
+}) {
+  if (props.toolData.detailsRedacted) {
+    return (
+      <ChartForgeActivity
+        toolData={props.toolData}
+        isStreaming={props.isStreaming}
+      />
+    );
+  }
+  return <VisibleToolDetailsInline {...props} />;
+}
+
+function VisibleToolDetailsInline({
   toolData,
   isStreaming,
   onAcpPermissionSelect,

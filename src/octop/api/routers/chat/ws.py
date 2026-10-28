@@ -77,12 +77,39 @@ async def dashboard_chat_ws(
     connection_id = uuid.uuid4().hex
     await websocket.accept()
 
+    from octop.api.common.chat_display import chat_display
+
+    displays: dict[str, Any] = {}
+    checked: set[tuple[str, str]] = set()
+    display_thread = ""
+    display_lock = asyncio.Lock()
+
     async def send_frame(frame: dict[str, Any]) -> None:
         if websocket.application_state != WebSocketState.CONNECTED:
             return
-        await websocket.send_text(
-            json.dumps(frame, ensure_ascii=False, default=json_chunk_default),
-        )
+        async with display_lock:
+            tid = str(frame.get("thread_id") or display_thread)
+            if not tid:
+                frames = [frame]
+            else:
+                if tid not in displays:
+                    displays[tid] = await chat_display(server, agent_id, tid, user.locale or "en")
+                display = displays[tid]
+                if frame.get("type") == "turn.started":
+                    checked.discard((tid, str(frame.get("agent_id") or "")))
+                key = (tid, str(frame.get("agent_id") or ""))
+                if (
+                    frame.get("type") in ("token", "reasoning", "tool_call_chunk")
+                    and key not in checked
+                ):
+                    await display.refresh()
+                    checked.add(key)
+                frames = display.stream(frame)
+                await display.persist()
+            for outgoing in frames:
+                await websocket.send_text(
+                    json.dumps(outgoing, ensure_ascii=False, default=json_chunk_default),
+                )
 
     hub.register(connection_id, send_frame)
 
@@ -113,6 +140,8 @@ async def dashboard_chat_ws(
                         {"type": "error", "message": f"thread {thread_id!r} not found"},
                     )
                     continue
+
+                display_thread = thread_id
 
                 def _subscribe(tid: str = thread_id, cid: str = connection_id) -> None:
                     hub.subscribe(tid, cid)

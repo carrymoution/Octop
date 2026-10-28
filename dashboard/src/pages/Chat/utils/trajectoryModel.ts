@@ -209,6 +209,7 @@ export function coerceToolArgsText(value: unknown): string | null {
 }
 
 function formatToolArgs(payload: Record<string, unknown>): string | null {
+  if (payload.details_redacted === true) return null;
   const args = payload.args ?? payload.arguments ?? payload.input;
   if (args == null) return null;
   const text = coerceToolArgsText(args);
@@ -216,6 +217,8 @@ function formatToolArgs(payload: Record<string, unknown>): string | null {
 }
 
 function formatToolResult(payload: Record<string, unknown>): string | null {
+  if (payload.details_redacted === true)
+    return typeof payload.summary === "string" ? payload.summary : null;
   const text =
     coerceToolResultText(payload.result) ??
     coerceToolResultText(payload.output) ??

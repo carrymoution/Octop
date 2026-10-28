@@ -16,10 +16,12 @@ from fastapi import APIRouter, Depends, Query, Request
 from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel, Field
 
+from octop.api.common.chat_display import chat_display
 from octop.api.common.content_disposition import content_disposition
 from octop.api.deps import current_user, get_server
 from octop.api.routers.chat.history import _require_thread
 from octop.api.routers.chat.sse import format_sse
+from octop.infra.connectors.chartforge_display import ChartForgeDisplay
 from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.history.trajectory.live import TrajectoryLiveBus
 from octop.infra.history.trajectory.service import TrajectoryService
@@ -54,7 +56,10 @@ class TrajectoryEventOut(BaseModel):
     request_seq: int | None = None
     is_error: bool
     summary: str
-    payload: dict[str, Any] = Field(default_factory=dict)
+    payload: dict[str, Any] = Field(
+        default_factory=dict,
+        description="Event data. AI report tool events carry details_redacted=true and a safe execution summary; raw SQL, results and internal context are unavailable.",
+    )
 
 
 class TrajectoryHistoryOut(BaseModel):
@@ -110,9 +115,11 @@ def _clip_list_payload_value(value: Any) -> Any:
     return value
 
 
-def _summarize_event(event: TrajectoryEvent) -> dict[str, Any]:
+def _summarize_event(
+    event: TrajectoryEvent, display: ChartForgeDisplay | None = None
+) -> dict[str, Any]:
     """List-view projection: drop message bodies; keep clipped tool args/result."""
-    data = asdict(event)
+    data = display.trajectory(asdict(event)) if display else asdict(event)
     summary = str(data.get("summary") or "")
     if len(summary) > _LIST_MAX_SUMMARY_CHARS:
         data["summary"] = summary[: _LIST_MAX_SUMMARY_CHARS - 1].rstrip() + "…"
@@ -132,9 +139,15 @@ def _summarize_event(event: TrajectoryEvent) -> dict[str, Any]:
     return data
 
 
-def _jsonl_lines(service: TrajectoryService, thread_id: str) -> Iterator[str]:
+def _jsonl_lines(
+    service: TrajectoryService, thread_id: str, display: ChartForgeDisplay | None = None
+) -> Iterator[str]:
     for line in service.export_jsonl(thread_id):
-        yield line + "\n"
+        yield (
+            json.dumps(display.trajectory(json.loads(line)), ensure_ascii=False)
+            if display
+            else line
+        ) + "\n"
 
 
 def _live_bus(service: TrajectoryService) -> TrajectoryLiveBus:
@@ -182,6 +195,7 @@ async def _iter_trajectory_sse(
     service: TrajectoryService,
     thread_id: str,
     after_seq: int | None,
+    display: ChartForgeDisplay | None = None,
 ) -> AsyncIterator[str]:
     bus = _live_bus(service)
     queue = bus.subscribe(thread_id)
@@ -195,7 +209,9 @@ async def _iter_trajectory_sse(
                 limit=TRAJECTORY_SSE_REPLAY_MAX,
             )
             for event in replay:
-                payload = asdict(event)
+                payload = display.trajectory(asdict(event)) if display else asdict(event)
+                if display:
+                    await display.persist()
                 event_seq = event.seq
                 # Re-emit ``seq == after_seq`` so a same-seq tool upsert that
                 # landed between REST history and this subscribe still reaches
@@ -219,6 +235,10 @@ async def _iter_trajectory_sse(
             if isinstance(seq, int) and last_seq is not None and seq < last_seq:
                 continue
             outgoing = _client_event_payload(message) if isinstance(message, dict) else message
+            if display is not None and isinstance(outgoing, dict):
+                await display.refresh()
+                outgoing = display.trajectory(outgoing)
+                await display.persist()
             yield _sse_named("event", outgoing, sse_id=seq if isinstance(seq, int) else None)
             if isinstance(seq, int):
                 last_seq = seq
@@ -257,7 +277,8 @@ async def get_thread_trajectory(
 
     List payloads omit message bodies (``content`` / ``text`` / ``thinking``) but
     include clipped tool ``args`` / ``result`` for ledger rendering. Use the
-    event detail endpoint for full payloads.
+    event detail endpoint for full public payloads. Report execution details are
+    redacted for every viewer, including administrators.
     """
     _require_thread(server, agent_id, thread_id, user, as_user)
     page_limit = _clamp_limit(limit)
@@ -275,9 +296,12 @@ async def get_thread_trajectory(
     events = await asyncio.to_thread(_list)
     has_more = len(events) > page_limit
     page = events[1:] if has_more else events
+    display = await chat_display(server, agent_id, thread_id, user.locale or "en")
     return TrajectoryHistoryOut(
         thread_id=thread_id,
-        events=[TrajectoryEventOut.model_validate(_summarize_event(event)) for event in page],
+        events=[
+            TrajectoryEventOut.model_validate(_summarize_event(event, display)) for event in page
+        ],
         next_before_seq=page[0].seq if has_more and page else None,
         has_more=has_more,
     )
@@ -296,12 +320,13 @@ async def get_trajectory_event(
     user: Any = Depends(current_user),
     server: Any = Depends(get_server),
 ) -> TrajectoryEventOut:
-    """Return one trajectory event with its full payload."""
+    """Return one public event; report SQL and internal execution details are redacted."""
     _require_thread(server, agent_id, thread_id, user, as_user)
     event = _trajectory_service(server).get_event(event_id)
     if event is None or event.thread_id != thread_id or event.agent_id != agent_id:
         raise OctopError(ErrorCode.NOT_FOUND, f"event {event_id!r} not found")
-    return TrajectoryEventOut.model_validate(asdict(event))
+    display = await chat_display(server, agent_id, thread_id, user.locale or "en")
+    return TrajectoryEventOut.model_validate(display.trajectory(asdict(event)))
 
 
 @router.get(
@@ -346,6 +371,7 @@ async def stream_thread_trajectory(
     """
     _require_thread(server, agent_id, thread_id, user, as_user)
     service = _trajectory_service(server)
+    display = await chat_display(server, agent_id, thread_id, user.locale or "en")
 
     async def gen() -> AsyncIterator[str]:
         async for frame in _iter_trajectory_sse(
@@ -353,6 +379,7 @@ async def stream_thread_trajectory(
             service=service,
             thread_id=thread_id,
             after_seq=after_seq,
+            display=display,
         ):
             yield frame
 
@@ -373,7 +400,7 @@ async def export_thread_trajectory(
     thread_id: str,
     format: Literal["jsonl", "json"] = Query(  # noqa: A002
         default="jsonl",
-        description="Download format. Default is JSON Lines with full payloads.",
+        description="Download format. Report execution details remain redacted in both formats.",
     ),
     as_user: int | None = None,
     user: Any = Depends(current_user),
@@ -382,11 +409,14 @@ async def export_thread_trajectory(
     """Download the full trajectory ledger. Default ``jsonl``; ``json`` returns an array."""
     _require_thread(server, agent_id, thread_id, user, as_user)
     service = _trajectory_service(server)
+    display = await chat_display(server, agent_id, thread_id, user.locale or "en")
     stamp = datetime.now(UTC).strftime("%Y%m%d-%H%M%S")
     if format == "json":
         filename = f"trajectory-{thread_id}-{stamp}.json"
         payload = await asyncio.to_thread(
-            lambda: [json.loads(line) for line in service.export_jsonl(thread_id)]
+            lambda: [
+                display.trajectory(json.loads(line)) for line in service.export_jsonl(thread_id)
+            ]
         )
         return JSONResponse(
             payload,
@@ -394,7 +424,7 @@ async def export_thread_trajectory(
         )
     filename = f"trajectory-{thread_id}-{stamp}.jsonl"
     return StreamingResponse(
-        _jsonl_lines(service, thread_id),
+        _jsonl_lines(service, thread_id, display),
         media_type="application/x-ndjson",
         headers={"Content-Disposition": content_disposition(filename)},
     )

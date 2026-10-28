@@ -25,6 +25,7 @@ from octop.infra.agents.experts.catalog import (
 from octop.infra.agents.settings.profile import welcome_from_row
 from octop.infra.agents.teams import is_team_agent
 from octop.infra.agents.teams.welcome import team_host_welcome_payload
+from octop.infra.connectors.chartforge_display import ChartForgeDisplay
 from octop.infra.gateway.hitl.coordinator import (
     HitlChannelCoordinator,
     HitlStreamContext,
@@ -103,6 +104,7 @@ async def iter_dashboard_hitl_resume_sse(
     channel_type: str,
     locale: str,
     is_disconnected: Callable[[], Awaitable[bool]],
+    display: ChartForgeDisplay | None = None,
 ) -> AsyncIterator[str]:
     """Stream dashboard HITL resume chunks and persist any nested ``hitl_required``.
 
@@ -110,6 +112,7 @@ async def iter_dashboard_hitl_resume_sse(
     reload / refresh can reinject the approval card (same as the initial turn).
     """
     rejected = any(isinstance(d, dict) and d.get("type") == "reject" for d in decisions)
+    display = display or ChartForgeDisplay(locale=locale)
     if pending is not None and pending.resume_agent_id:
         from octop.i18n.domains.slash import tr as slash_tr  # noqa: PLC0415
         from octop.infra.utils.locale import normalize_locale  # noqa: PLC0415
@@ -170,7 +173,10 @@ async def iter_dashboard_hitl_resume_sse(
                     request_payload["pending_id"] = record.pending_id
                     chunk["request"] = request_payload
             if not disconnected:
-                yield format_sse("chunk", chunk)
+                outgoing_frames = display.stream(chunk)
+                await display.persist()
+                for outgoing in outgoing_frames:
+                    yield format_sse("chunk", outgoing)
         # A new approval card is still pending. Draining now would start a
         # turn that expires that card. Keep the queue until a resume finishes
         # without another pause. A plain ``done`` would also make the
@@ -202,10 +208,10 @@ async def iter_dashboard_hitl_resume_sse(
         # leave the record looking like a successful approve/reject.
         if pending is not None:
             hitl_coordinator.store.mark_resolved(pending.pending_id, "expired")
-        yield format_sse(
-            "chunk",
-            {"type": "error", "message": format_stream_error(exc, locale)},
-        )
+        for outgoing in display.stream(
+            {"type": "error", "message": format_stream_error(exc, locale)}
+        ):
+            yield format_sse("chunk", outgoing)
 
 
 def _dashboard_hitl_stream_context(
@@ -271,6 +277,12 @@ async def resume_hitl(
     if body.hitl_policy is not None:
         hitl_coordinator.session_policies.set(body.thread_id, body.hitl_policy.model_dump())
 
+    from octop.api.common.chat_display import chat_display
+    from octop.api.routers.chat.history import _require_thread
+
+    _require_thread(server, agent_id, body.thread_id, user, None)
+    display = await chat_display(server, agent_id, body.thread_id, resolve_request_locale(request))
+
     async def gen() -> AsyncIterator[str]:
         async for frame in iter_dashboard_hitl_resume_sse(
             server=server,
@@ -285,6 +297,7 @@ async def resume_hitl(
             channel_type=channel_type,
             locale=resolve_request_locale(request),
             is_disconnected=request.is_disconnected,
+            display=display,
         ):
             yield frame
 
